@@ -1,0 +1,26 @@
+# Ignore all .npy files
+*.npy
+
+# Python cache folders
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment folders
+venv/
+.venv/
+
+# VS Code settings (optional)
+.vscode/
+
+# Temporary files
+*.temp
+*.tmp
+
+# System generated files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
