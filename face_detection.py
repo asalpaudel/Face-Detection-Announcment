@@ -2,7 +2,7 @@ import cv2
 import numpy as np 
 import os
 
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture("rtsp://admin:Virinchi%401@192.168.1.10:554/Streaming/Channels/102")
 script_dir = os.path.dirname(os.path.abspath(__file__))
 cascade_path = os.path.join(script_dir, 'haarcascade_frontalface_alt.xml')
 face_cascade = cv2.CascadeClassifier(cascade_path)
