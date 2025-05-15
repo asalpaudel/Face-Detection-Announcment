@@ -1,10 +1,11 @@
 import cv2
 import numpy as np 
 import os
+from drive_uploader import authenticate, get_or_create_folder, upload_file
 
 # Connect to HD stream (Channel 101)
 cap = cv2.VideoCapture("rtsp://admin:Virinchi%401@192.168.1.10:554/Streaming/Channels/101")
-
+# cap = cv2.VideoCapture(0)  # Use local camera for testing
 # Check if stream opened
 if not cap.isOpened():
     print("[ERROR] Cannot open RTSP stream")
@@ -107,9 +108,16 @@ while True:
         break
 
 # Save dataset
+saved_path = os.path.join(dataset_path, file_name + ".npy")
 face_data = np.array(face_data).reshape((len(face_data), -1))
-np.save(os.path.join(dataset_path, file_name), face_data)
-print(f"Dataset saved at: {os.path.join(dataset_path, file_name)}.npy")
+np.save(saved_path, face_data)
+print(f"Dataset saved at: {saved_path}")
+
+# Upload to Google Drive
+print("[Drive] Uploading to Google Drive...")
+service = authenticate()
+folder_id = get_or_create_folder(service, 'face_dataset')
+upload_file(service, saved_path, folder_id)
 
 cap.release()
 cv2.destroyAllWindows()

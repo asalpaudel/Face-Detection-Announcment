@@ -5,9 +5,87 @@ from speech import welcome_person
 import threading
 import time
 import queue
+from drive_uploader import authenticate, get_or_create_folder, list_files_in_folder
+from googleapiclient.http import MediaIoBaseDownload
+import io
 
-# RTSP camera stream from main channel (HD)
-cap = cv2.VideoCapture("rtsp://admin:Virinchi%401@192.168.1.10:554/Streaming/Channels/101")
+
+def sync_and_retrain():
+    service = authenticate()
+    folder_id = get_or_create_folder(service, 'face_dataset')
+    known_files = {}
+
+    global recognizer, names
+
+    while True:
+        try:
+            files = list_files_in_folder(service, folder_id)
+            updated = False
+
+            for f in files:
+                fname = f['name']
+                fid = f['id']
+                modified = f['modifiedTime']
+
+                if fname.endswith('.npy'):
+                    local_path = os.path.join(dataset_path, fname)
+
+                    # Check if file is new or modified
+                    if fname not in known_files or known_files[fname] != modified:
+                        print(f"[Sync] Downloading: {fname}")
+                        request = service.files().get_media(fileId=fid)
+                        fh = io.FileIO(local_path, 'wb')
+                        downloader = MediaIoBaseDownload(fh, request)
+                        done = False
+                        while not done:
+                            status, done = downloader.next_chunk()
+
+                        known_files[fname] = modified
+                        updated = True
+
+            if updated:
+                print("[Sync] Changes detected. Re-training recognizer.")
+                # Reload & retrain
+                faces = []
+                labels = []
+                class_id = 0
+                names = {}
+
+                for fx in os.listdir(dataset_path):
+                    if fx.endswith('.npy'):
+                        names[class_id] = fx[:-4]
+                        data_item = np.load(os.path.join(dataset_path, fx))
+
+                        if data_item.shape[1] == 30000:
+                            data_item = data_item.reshape((-1, 100, 100, 3))
+                            data_item = np.array([cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) for img in data_item])
+                        elif data_item.shape[1] == 10000:
+                            data_item = data_item.reshape((-1, 100, 100))
+                        else:
+                            continue
+
+                        for face in data_item:
+                            faces.append(face)
+                            labels.append(class_id)
+
+                        class_id += 1
+
+                if faces:
+                    recognizer.train(np.array(faces, dtype=np.uint8), np.array(labels))
+                    print("[INFO] Initial training complete.")
+                else:
+                    print("[INFO] No local data yet. Waiting for sync...")
+
+        except Exception as e:
+            print(f"[Sync Error] {e}")
+
+        time.sleep(30)  # check every 30 seconds
+        
+
+cap = cv2.VideoCapture("rtsp://admin:Virinchi%401@192.168.1.10:554/Streaming/Channels/102")
+
+# cap = cv2.VideoCapture(0)  # Use local camera for testing
+
 if not cap.isOpened():
     print("[ERROR] Failed to open RTSP stream.")
     exit()
@@ -52,8 +130,14 @@ for fx in os.listdir(dataset_path):
 faces = np.array(faces, dtype=np.uint8)
 labels = np.array(labels)
 
-recognizer.train(faces, labels)
-print("[INFO] Training complete!")
+if len(faces) > 0:
+    recognizer.train(faces, labels)
+    print("[INFO] Training complete!")
+else:
+    print("[INFO] No local data yet. Waiting for sync to populate face_dataset...")
+
+sync_thread = threading.Thread(target=sync_and_retrain, daemon=True)
+sync_thread.start()
 
 # Speech thread
 speech_queue = queue.Queue()
@@ -84,9 +168,9 @@ while True:
     gray_small = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
     gray_small = cv2.equalizeHist(gray_small)
 
-    # Scale for mapping coords back to HD
-    scale_x = frame.shape[1] / small_frame.shape[1]
-    scale_y = frame.shape[0] / small_frame.shape[0]
+    # Scale for mapping coords back to HD for 101
+    # scale_x = frame.shape[1] / small_frame.shape[1]
+    # scale_y = frame.shape[0] / small_frame.shape[0]
 
     # Face detection
     faces_detected = []
@@ -102,17 +186,24 @@ while True:
     current_names_in_frame = set()
 
     for (x, y, w, h) in faces_detected:
-        # Map to HD
-        x_hd = int(x * scale_x)
-        y_hd = int(y * scale_y)
-        w_hd = int(w * scale_x)
-        h_hd = int(h * scale_y)
+        # Map to HD for 101
+        # x_hd = int(x * scale_x)
+        # y_hd = int(y * scale_y)
+        # w_hd = int(w * scale_x)
+        # h_hd = int(h * scale_y)
 
+        # offset = 10
+        # x1 = max(0, x_hd - offset)
+        # y1 = max(0, y_hd - offset)
+        # x2 = min(x_hd + w_hd + offset, frame.shape[1])
+        # y2 = min(y_hd + h_hd + offset, frame.shape[0])
+
+        #for 102
         offset = 10
-        x1 = max(0, x_hd - offset)
-        y1 = max(0, y_hd - offset)
-        x2 = min(x_hd + w_hd + offset, frame.shape[1])
-        y2 = min(y_hd + h_hd + offset, frame.shape[0])
+        x1 = max(0, x - offset)
+        y1 = max(0, y - offset)
+        x2 = min(x + w + offset, frame.shape[1])
+        y2 = min(y + h + offset, frame.shape[0])
 
         face_region = frame[y1:y2, x1:x2]
         gray_face = cv2.cvtColor(face_region, cv2.COLOR_BGR2GRAY)
@@ -136,9 +227,15 @@ while True:
         else:
             confidence = 100  # Display high number for unknowns
 
-        cv2.putText(frame, f"{name} ({int(confidence)})", (x_hd, y_hd - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
-        cv2.rectangle(frame, (x_hd, y_hd), (x_hd + w_hd, y_hd + h_hd), (255, 255, 255), 2)
+        #for 101
+        # cv2.putText(frame, f"{name} ({int(confidence)})", (x_hd, y_hd - 10),
+        #             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+        # cv2.rectangle(frame, (x_hd, y_hd), (x_hd + w_hd, y_hd + h_hd), (255, 255, 255), 2)
+
+
+        #for 102
+        cv2.putText(frame, f"{name} ({int(confidence)})", (x, y - 10), ...)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 255), 2)
 
     # Decay detection counts if not seen
     for name in list(detection_counts.keys()):
