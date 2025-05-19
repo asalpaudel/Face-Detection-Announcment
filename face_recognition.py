@@ -82,10 +82,10 @@ def sync_and_retrain():
         time.sleep(30)  # check every 30 seconds
         
 
-#cap = cv2.VideoCapture("rtsp://admin:Virinchi%401@192.168.1.10:554/Streaming/Channels/102")
+cap = cv2.VideoCapture("rtsp://admin:Virinchi%401@192.168.1.10:554/Streaming/Channels/101")
 #cap = cv2.VideoCapture("rtsp://admin:Admin%40123@192.168.1.12:554/Streaming/Channels/102")
 
-cap = cv2.VideoCapture(0)  # Use local camera for testing
+# cap = cv2.VideoCapture(0)  # Use local camera for testing
 
 if not cap.isOpened():
     print("[ERROR] Failed to open RTSP stream.")
@@ -136,6 +136,8 @@ if len(faces) > 0:
     print("[INFO] Training complete!")
 else:
     print("[INFO] No local data yet. Waiting for sync to populate face_dataset...")
+    trained = False
+
 
 sync_thread = threading.Thread(target=sync_and_retrain, daemon=True)
 sync_thread.start()
@@ -164,20 +166,22 @@ while True:
     if not ret:
         continue
 
+    orig_h, orig_w = frame.shape[:2]
+
     # Resize for detection only
     small_frame = cv2.resize(frame, (640, 480))
     gray_small = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
     gray_small = cv2.equalizeHist(gray_small)
 
-    # Scale for mapping coords back to HD for 101
-    # scale_x = frame.shape[1] / small_frame.shape[1]
-    # scale_y = frame.shape[0] / small_frame.shape[0]
+    scale_x = orig_w / 640
+    scale_y = orig_h / 480
 
-    # Face detection
+    # Detect faces in resized (small) frame
     faces_detected = []
     faces_detected.extend(face_cascade.detectMultiScale(gray_small, 1.3, 5))
     faces_detected.extend(profile_cascade.detectMultiScale(gray_small, 1.3, 5))
 
+    # Detect flipped profile faces
     flipped_gray = cv2.flip(gray_small, 1)
     flipped_profiles = profile_cascade.detectMultiScale(flipped_gray, 1.3, 5)
     for (x, y, w, h) in flipped_profiles:
@@ -187,24 +191,17 @@ while True:
     current_names_in_frame = set()
 
     for (x, y, w, h) in faces_detected:
-        # Map to HD for 101
-        # x_hd = int(x * scale_x)
-        # y_hd = int(y * scale_y)
-        # w_hd = int(w * scale_x)
-        # h_hd = int(h * scale_y)
+        # Map small-frame coords to original frame
+        x_hd = int(x * scale_x)
+        y_hd = int(y * scale_y)
+        w_hd = int(w * scale_x)
+        h_hd = int(h * scale_y)
 
-        # offset = 10
-        # x1 = max(0, x_hd - offset)
-        # y1 = max(0, y_hd - offset)
-        # x2 = min(x_hd + w_hd + offset, frame.shape[1])
-        # y2 = min(y_hd + h_hd + offset, frame.shape[0])
-
-        #for sw
         offset = 10
-        x1 = max(0, x - offset)
-        y1 = max(0, y - offset)
-        x2 = min(x + w + offset, frame.shape[1])
-        y2 = min(y + h + offset, frame.shape[0])
+        x1 = max(0, x_hd - offset)
+        y1 = max(0, y_hd - offset)
+        x2 = min(x_hd + w_hd + offset, orig_w)
+        y2 = min(y_hd + h_hd + offset, orig_h)
 
         face_region = frame[y1:y2, x1:x2]
         gray_face = cv2.cvtColor(face_region, cv2.COLOR_BGR2GRAY)
@@ -220,25 +217,19 @@ while True:
             current_time = time.time()
             detection_counts[name] = detection_counts.get(name, 0) + 1
 
-            if detection_counts[name] >= 5 and name not in recognized_times:
+            if detection_counts[name] >= 10 and name not in recognized_times:
                 recognized_times[name] = current_time
                 print(f"[INFO] Greeting queued: {name} (Confidence: {confidence:.2f})")
                 speech_queue.put(name)
-
         else:
-            confidence = 100  # Display high number for unknowns
+            confidence = 100  # Show 100 for unknowns
 
-        #for 101
-        # cv2.putText(frame, f"{name} ({int(confidence)})", (x_hd, y_hd - 10),
-        #             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
-        # cv2.rectangle(frame, (x_hd, y_hd), (x_hd + w_hd, y_hd + h_hd), (255, 255, 255), 2)
+        # Draw corrected bounding box and label
+        cv2.putText(frame, f"{name} ({int(confidence)})", (x_hd, y_hd - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+        cv2.rectangle(frame, (x_hd, y_hd), (x_hd + w_hd, y_hd + h_hd), (255, 255, 255), 2)
 
-
-        #for 102
-        cv2.putText(frame, f"{name} ({int(confidence)})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 255), 2)
-
-    # Decay detection counts if not seen
+    # Decay detection counts
     for name in list(detection_counts.keys()):
         if name not in current_names_in_frame:
             detection_counts[name] = max(0, detection_counts[name] - 1)
@@ -246,6 +237,7 @@ while True:
     cv2.imshow("Faces", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
+
 
 # Cleanup
 speech_queue.put(None)

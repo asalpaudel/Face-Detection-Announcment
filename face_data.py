@@ -7,7 +7,7 @@ from drive_uploader import authenticate, get_or_create_folder, upload_file
 cap = cv2.VideoCapture("rtsp://admin:Virinchi%401@192.168.1.10:554/Streaming/Channels/101")
 #cap = cv2.VideoCapture("rtsp://admin:Admin%40123@192.168.1.12:554/Streaming/Channels/102")
 
-#cap = cv2.VideoCapture(0)  # Use local camera for testing
+# cap = cv2.VideoCapture(0)  # Use local camera for testing
 # Check if stream opened
 if not cap.isOpened():
     print("[ERROR] Cannot open RTSP stream")
@@ -33,7 +33,7 @@ def enhance_lighting(gray_img):
     return cv2.equalizeHist(gray_img)
 
 while True:
-    for _ in range(5):  # Flush buffer to reduce delay
+    for _ in range(2):  # Flush buffer to reduce delay
         cap.grab()
     ret, frame = cap.read()
     if not ret:
@@ -89,9 +89,9 @@ while True:
         face_gray = enhance_lighting(face_gray)
         face_selection = cv2.resize(face_gray, (100, 100))
 
-        if skip % 2 == 0:
-            face_data.append(face_selection)
-            print(f"Captured sample: {len(face_data)}")
+        # if skip % 2 == 0:
+        face_data.append(face_selection)
+        print(f"Captured sample: {len(face_data)}")
 
         cv2.imshow("face", face_selection)
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
