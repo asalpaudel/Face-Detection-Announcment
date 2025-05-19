@@ -5,7 +5,9 @@ from drive_uploader import authenticate, get_or_create_folder, upload_file
 
 # Connect to HD stream (Channel 101)
 cap = cv2.VideoCapture("rtsp://admin:Virinchi%401@192.168.1.10:554/Streaming/Channels/101")
-# cap = cv2.VideoCapture(0)  # Use local camera for testing
+#cap = cv2.VideoCapture("rtsp://admin:Admin%40123@192.168.1.12:554/Streaming/Channels/102")
+
+#cap = cv2.VideoCapture(0)  # Use local camera for testing
 # Check if stream opened
 if not cap.isOpened():
     print("[ERROR] Cannot open RTSP stream")

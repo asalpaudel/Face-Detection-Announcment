@@ -82,9 +82,10 @@ def sync_and_retrain():
         time.sleep(30)  # check every 30 seconds
         
 
-cap = cv2.VideoCapture("rtsp://admin:Virinchi%401@192.168.1.10:554/Streaming/Channels/102")
+#cap = cv2.VideoCapture("rtsp://admin:Virinchi%401@192.168.1.10:554/Streaming/Channels/102")
+#cap = cv2.VideoCapture("rtsp://admin:Admin%40123@192.168.1.12:554/Streaming/Channels/102")
 
-# cap = cv2.VideoCapture(0)  # Use local camera for testing
+cap = cv2.VideoCapture(0)  # Use local camera for testing
 
 if not cap.isOpened():
     print("[ERROR] Failed to open RTSP stream.")
@@ -198,7 +199,7 @@ while True:
         # x2 = min(x_hd + w_hd + offset, frame.shape[1])
         # y2 = min(y_hd + h_hd + offset, frame.shape[0])
 
-        #for 102
+        #for sw
         offset = 10
         x1 = max(0, x - offset)
         y1 = max(0, y - offset)
@@ -234,7 +235,7 @@ while True:
 
 
         #for 102
-        cv2.putText(frame, f"{name} ({int(confidence)})", (x, y - 10), ...)
+        cv2.putText(frame, f"{name} ({int(confidence)})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
         cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 255), 2)
 
     # Decay detection counts if not seen
